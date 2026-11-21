@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,7 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -19,26 +20,43 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.model.ActiveOrder
+import com.example.model.GroceryProduct
+import com.example.model.MenuItem
+import com.example.model.Restaurant
+import com.example.ui.components.AddExtraItemsBottomSheet
+import com.example.ui.components.LiveDeliveryRouteMap
 import com.example.ui.theme.QuickDropOnSecondaryFixed
 import com.example.ui.theme.QuickDropSecondaryContainer
+import com.example.ui.theme.VegGreen
 import com.example.ui.theme.ZomatoCrimson
 
 @Composable
 fun OrderTrackingScreen(
     order: ActiveOrder,
+    products: List<GroceryProduct>,
+    restaurants: List<Restaurant>,
     onBack: () -> Unit,
-    onAdvanceStage: () -> Unit,
+    onAddExtraProduct: (GroceryProduct) -> Unit,
+    onAddExtraDish: (MenuItem) -> Unit,
+    onAddCustomExtra: (name: String, price: Int) -> Unit,
     onReorder: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBack)
 
+    var showExtraItemsSheet by remember { mutableStateOf(false) }
+
     val stages = listOf(
         "Order Confirmed" to "We received your order at ${order.hubOrKitchen}",
         (if (order.isFoodOrder) "Kitchen Preparing Meal" else "Packing at Darkstore") to "Freshly picking & sealing your ${order.itemsCount} items",
-        "Rider On The Way" to "${order.riderName} is heading to your doorstep",
+        "Rider On The Way" to if (order.isShopPickupOtpVerified) {
+            "${order.riderName} verified shop pickup OTP & is heading to your doorstep"
+        } else {
+            "${order.riderName} is heading to your doorstep"
+        },
         "Delivered" to "Enjoy your order! Total saved: ₹${order.totalSaved}"
     )
 
@@ -93,7 +111,12 @@ fun OrderTrackingScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Live Route Illustration Card
+            // Interactive Live Delivery Map
+            item {
+                LiveDeliveryRouteMap(order = order)
+            }
+
+            // Live Stage Timeline Card (Read-only for customers; Admin-controlled)
             item {
                 Surface(
                     shape = RoundedCornerShape(18.dp),
@@ -106,7 +129,7 @@ fun OrderTrackingScreen(
                             .background(
                                 Brush.verticalGradient(
                                     listOf(
-                                        headerColor.copy(alpha = 0.1f),
+                                        headerColor.copy(alpha = 0.08f),
                                         MaterialTheme.colorScheme.surfaceContainerLowest
                                     )
                                 )
@@ -135,7 +158,7 @@ fun OrderTrackingScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Text(
-                                        text = if (order.stageIndex >= 3) "COMPLETED" else "LIVE TRACKING",
+                                        text = if (order.stageIndex >= 3) "COMPLETED" else "LIVE STATUS",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = QuickDropOnSecondaryFixed
                                     )
@@ -193,6 +216,23 @@ fun OrderTrackingScreen(
                                     )
                                 }
                             }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Lock,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Packing & dispatch stages are updated exclusively by Store Admin",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -273,7 +313,7 @@ fun OrderTrackingScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "Delivery Details",
+                            text = "Delivery Details (${order.itemsCount} items)",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                         Text(
@@ -285,26 +325,127 @@ fun OrderTrackingScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+
+                        // In-App Delivery OTP Card right underneath Order Details
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (order.stageIndex >= 3) {
+                                VegGreen.copy(alpha = 0.10f)
+                            } else {
+                                QuickDropSecondaryContainer.copy(alpha = 0.35f)
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (order.stageIndex >= 3) VegGreen.copy(alpha = 0.45f)
+                                else QuickDropOnSecondaryFixed.copy(alpha = 0.25f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("order_delivery_otp_card")
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (order.stageIndex >= 3) Icons.Filled.Verified else Icons.Filled.Pin,
+                                            contentDescription = null,
+                                            tint = if (order.stageIndex >= 3) VegGreen else QuickDropOnSecondaryFixed,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = if (order.stageIndex >= 3) "OTP Verified • Ride Finished" else "Delivery Handover OTP",
+                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                            color = if (order.stageIndex >= 3) VegGreen else QuickDropOnSecondaryFixed
+                                        )
+                                    }
+                                    Surface(
+                                        color = if (order.stageIndex >= 3) VegGreen else Color(0xFF1A2229),
+                                        shape = CircleShape
+                                    ) {
+                                        Text(
+                                            text = if (order.stageIndex >= 3) "VERIFIED" else "4-DIGIT PIN",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                if (order.stageIndex < 3) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("order_delivery_otp_value"),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        order.deliveryOtp.forEach { digit ->
+                                            Surface(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(46.dp),
+                                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                                                shape = RoundedCornerShape(10.dp),
+                                                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = digit.toString(),
+                                                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = "Share this OTP with ${order.riderName} at doorstep to verify & complete your delivery.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = QuickDropOnSecondaryFixed
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Verified OTP ${order.deliveryOtp} with ${order.riderName}. Thank you for ordering with QuickDrop!",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = VegGreen
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            // Interactive Demo Progression / Reorder Actions
+            // Add Extra Items (only before rider leaves for delivery) or Reorder
             item {
-                if (order.stageIndex < 3) {
-                    OutlinedButton(
-                        onClick = onAdvanceStage,
+                if (order.stageIndex < 2) {
+                    Button(
+                        onClick = { showExtraItemsSheet = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("advance_delivery_stage_button"),
+                            .height(50.dp)
+                            .testTag("add_extra_items_to_order_btn"),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Filled.FastForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.AddShoppingCart, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Advance Live Delivery Step")
+                        Text("Add Extra Items to This Order")
                     }
-                } else if (order.reorderCartItems.isNotEmpty()) {
+                } else if (order.stageIndex >= 3 && order.reorderCartItems.isNotEmpty()) {
                     Button(
                         onClick = onReorder,
                         modifier = Modifier
@@ -319,5 +460,19 @@ fun OrderTrackingScreen(
                 }
             }
         }
+    }
+
+    if (showExtraItemsSheet) {
+        AddExtraItemsBottomSheet(
+            title = "Add Extra Items to ${order.orderId}",
+            subtitle = "Add missed groceries, food dishes, or custom extra items before dispatch",
+            products = products,
+            restaurants = restaurants,
+            allowCustomItem = true,
+            onAddProduct = onAddExtraProduct,
+            onAddDish = onAddExtraDish,
+            onAddCustomExtra = onAddCustomExtra,
+            onDismiss = { showExtraItemsSheet = false }
+        )
     }
 }

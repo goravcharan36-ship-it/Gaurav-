@@ -39,6 +39,9 @@ data class QuickDropUiState(
     val isAdminUnlocked: Boolean = false,
     val adminUnlockError: String? = null,
     val adminTab: AdminTab = AdminTab.OVERVIEW,
+    val isShopkeeperMode: Boolean = false,
+    val shopApplications: List<ShopkeeperApplication> = defaultSeededShopApplications(),
+    val activeShopApplicationId: String? = "shop_app_seed_1",
 
     // Live mutable catalog & operational controls (managed via Admin Panel)
     val categories: List<GroceryCategory> = QuickDropCatalog.categories,
@@ -89,6 +92,7 @@ data class QuickDropUiState(
     // User preferences
     val isGlobalVegMode: Boolean = false,
     val isDarkTheme: Boolean = false,
+    val isDetectingGpsLocation: Boolean = false,
     val statusMessage: String? = null
 ) {
     val totalCartItemsCount: Int
@@ -105,6 +109,12 @@ data class QuickDropUiState(
 
     val activeCoupons: List<Coupon>
         get() = coupons.filter { it.isActive }
+
+    val pendingShopApplicationsCount: Int
+        get() = shopApplications.count { it.status == ShopApplicationStatus.PENDING_REVIEW }
+
+    val activeShopApplication: ShopkeeperApplication?
+        get() = shopApplications.firstOrNull { it.id == activeShopApplicationId } ?: shopApplications.firstOrNull()
 
     val bill: BillBreakdown
         get() {
@@ -207,7 +217,9 @@ private fun defaultPastOrders(): List<ActiveOrder> = listOf(
         vehicleLabel = "QuickDrop EV • KA-01-EV-4821",
         hubOrKitchen = "Indiranagar Hub",
         deliveryAddress = "Flat 402, Green Glen Layout, Bellandur",
-        isFoodOrder = false
+        isFoodOrder = false,
+        deliveryOtp = "4829",
+        isOtpVerified = false
     ),
     ActiveOrder(
         orderId = "QD-84920",
@@ -224,6 +236,8 @@ private fun defaultPastOrders(): List<ActiveOrder> = listOf(
         hubOrKitchen = "Meghana Foods, Indiranagar",
         deliveryAddress = "Flat 402, Green Glen Layout, Bellandur",
         isFoodOrder = true,
+        deliveryOtp = "7315",
+        isOtpVerified = true,
         reorderCartItems = listOf(
             CartItem(
                 id = "dish_meghana_veg_biryani",
@@ -237,6 +251,44 @@ private fun defaultPastOrders(): List<ActiveOrder> = listOf(
                 quantity = 1,
                 isGrocery = false,
                 isVeg = true
+            )
+        )
+    )
+)
+
+private fun defaultSeededShopApplications(): List<ShopkeeperApplication> = listOf(
+    ShopkeeperApplication(
+        id = "shop_app_seed_1",
+        shopName = "Sharma Fresh Kirana & Dairy",
+        ownerName = "Rajesh Sharma",
+        phone = "9876543210",
+        shopType = ShopType.GROCERY,
+        area = "Indiranagar 100ft Rd",
+        fullAddress = "Shop 14, 12th Main, HAL 2nd Stage, Indiranagar",
+        etaMins = 12,
+        gstOrLicenseNote = "GSTIN 29ABCPS1234F1Z2 • FSSAI Verified",
+        submittedAtText = "10 mins ago",
+        status = ShopApplicationStatus.PENDING_REVIEW,
+        listings = listOf(
+            ShopListingDraft(
+                id = "draft_seed_1",
+                title = "Farm Fresh Desi Cow A2 Milk",
+                categoryOrCuisine = "dairy",
+                unitOrPortion = "500 ml bottle",
+                price = 48,
+                mrp = 55,
+                isVeg = true,
+                description = "Morning farm-bottled pure A2 milk."
+            ),
+            ShopListingDraft(
+                id = "draft_seed_2",
+                title = "Chakki Fresh Sharbati Atta",
+                categoryOrCuisine = "atta_rice",
+                unitOrPortion = "5 kg pack",
+                price = 265,
+                mrp = 310,
+                isVeg = true,
+                description = "Stone-ground MP Sharbati whole wheat flour."
             )
         )
     )
@@ -285,7 +337,8 @@ class QuickDropViewModel : ViewModel() {
                 currentTab = tab,
                 selectedRestaurantId = null,
                 trackingOrderId = null,
-                isAdminMode = false
+                isAdminMode = false,
+                isShopkeeperMode = false
             )
         }
     }
@@ -298,7 +351,8 @@ class QuickDropViewModel : ViewModel() {
                 selectedSubcategory = "All",
                 selectedRestaurantId = null,
                 trackingOrderId = null,
-                isAdminMode = false
+                isAdminMode = false,
+                isShopkeeperMode = false
             )
         }
     }
@@ -428,6 +482,36 @@ class QuickDropViewModel : ViewModel() {
         }
     }
 
+    fun setGpsDetecting(detecting: Boolean) {
+        _uiState.update { it.copy(isDetectingGpsLocation = detecting) }
+    }
+
+    fun showStatusNotice(message: String) {
+        _uiState.update { it.copy(statusMessage = message) }
+    }
+
+    fun applyGpsDetectedLocation(areaShort: String, fullAddress: String) {
+        val cleanArea = areaShort.trim().ifEmpty { "Current GPS Area" }
+        val cleanFull = fullAddress.trim().ifEmpty { cleanArea }
+        val gpsAddr = DeliveryAddress(
+            id = "addr_gps_live",
+            label = "Current GPS",
+            fullAddress = cleanFull,
+            areaShort = cleanArea,
+            hubName = "Nearest QuickDrop Hub",
+            distanceKm = 0.6
+        )
+        _uiState.update { state ->
+            val withoutOldGps = state.addresses.filterNot { it.id == "addr_gps_live" }
+            state.copy(
+                addresses = listOf(gpsAddr) + withoutOldGps,
+                selectedAddress = gpsAddr,
+                isDetectingGpsLocation = false,
+                statusMessage = "GPS location detected: $cleanArea"
+            )
+        }
+    }
+
     fun addGroceryToCart(product: GroceryProduct) {
         val idx = (_uiState.value.selectedVariantByProductId[product.id] ?: product.defaultVariantIndex)
             .coerceIn(0, product.variants.lastIndex)
@@ -450,7 +534,8 @@ class QuickDropViewModel : ViewModel() {
                     quantity = 1,
                     isGrocery = true,
                     isVeg = product.isVeg,
-                    imageUrl = product.imageUrl
+                    imageUrl = product.imageUrl,
+                    sellerShopId = product.sellerShopId
                 )
             }
             state.copy(cartItems = updated)
@@ -467,6 +552,7 @@ class QuickDropViewModel : ViewModel() {
 
     fun addDishToCart(dish: MenuItem) {
         _uiState.update { state ->
+            val restShopId = state.restaurants.firstOrNull { it.id == dish.restaurantId }?.sellerShopId
             val existing = state.cartItems.firstOrNull { it.id == dish.id }
             val updated = if (existing != null) {
                 state.cartItems.map { if (it.id == dish.id) it.copy(quantity = it.quantity + 1) else it }
@@ -483,10 +569,37 @@ class QuickDropViewModel : ViewModel() {
                     quantity = 1,
                     isGrocery = false,
                     isVeg = dish.isVeg,
-                    imageUrl = dish.imageUrl
+                    imageUrl = dish.imageUrl,
+                    sellerShopId = restShopId
                 )
             }
             state.copy(cartItems = updated)
+        }
+    }
+
+    fun addCustomItemToCart(itemName: String, price: Int, unitLabel: String = "1 extra") {
+        val cleanName = itemName.trim()
+        if (cleanName.isEmpty()) return
+        val safePrice = price.coerceAtLeast(1)
+        val itemId = nextId("cart_extra")
+        val customCartItem = CartItem(
+            id = itemId,
+            productId = itemId,
+            variantId = "custom",
+            title = cleanName,
+            brandOrRestaurant = "Extra Item",
+            unitLabel = unitLabel.trim().ifEmpty { "1 extra" },
+            price = safePrice,
+            mrp = safePrice,
+            quantity = 1,
+            isGrocery = true,
+            isVeg = true
+        )
+        _uiState.update { state ->
+            state.copy(
+                cartItems = state.cartItems + customCartItem,
+                statusMessage = "Added \"$cleanName\" (₹$safePrice) to cart"
+            )
         }
     }
 
@@ -564,6 +677,20 @@ class QuickDropViewModel : ViewModel() {
         val summary = if (extraCount > 0) "$firstTitle + $extraCount more" else firstTitle
         val hasFood = snapshot.cartItems.any { !it.isGrocery }
         val orderId = "QD-${(10000..99999).random()}"
+        val otp = (1000..9999).random().toString()
+        var pickupOtp = (1000..9999).random().toString()
+        if (pickupOtp == otp) {
+            pickupOtp = (((pickupOtp.toInt() + 137) % 9000) + 1000).toString()
+        }
+        val matchedShop = snapshot.cartItems.firstNotNullOfOrNull { item ->
+            item.sellerShopId?.let { sid ->
+                snapshot.shopApplications.firstOrNull { it.id == sid && it.status == ShopApplicationStatus.APPROVED }
+            }
+        } ?: snapshot.shopApplications.firstOrNull { app ->
+            app.status == ShopApplicationStatus.APPROVED &&
+                snapshot.cartItems.any { it.brandOrRestaurant.equals(app.shopName, ignoreCase = true) }
+        }
+
         val newOrder = ActiveOrder(
             orderId = orderId,
             placedTimeText = "Just now • Paid via $paymentMethod",
@@ -571,18 +698,23 @@ class QuickDropViewModel : ViewModel() {
             itemsCount = snapshot.totalCartItemsCount,
             totalPaid = bill.toPay,
             totalSaved = bill.totalSavings,
-            etaMinutes = if (hasFood) 22 else 10,
+            etaMinutes = matchedShop?.etaMins ?: if (hasFood) 22 else 10,
             stageIndex = 0,
             riderName = if (hasFood) "Arjun Shetty" else "Suresh Kumar",
             riderRating = 4.9,
             vehicleLabel = "QuickDrop EV • KA-01-EV-4821",
-            hubOrKitchen = if (hasFood) {
+            hubOrKitchen = matchedShop?.shopName ?: if (hasFood) {
                 snapshot.cartItems.firstOrNull { !it.isGrocery }?.brandOrRestaurant ?: "Partner Kitchen"
             } else {
                 snapshot.selectedAddress.hubName
             },
             deliveryAddress = snapshot.selectedAddress.fullAddress,
             isFoodOrder = hasFood,
+            shopId = matchedShop?.id,
+            shopPickupOtp = pickupOtp,
+            isShopPickupOtpVerified = false,
+            deliveryOtp = otp,
+            isOtpVerified = false,
             reorderCartItems = snapshot.cartItems
         )
 
@@ -592,44 +724,162 @@ class QuickDropViewModel : ViewModel() {
                 orders = listOf(newOrder) + state.orders,
                 trackingOrderId = orderId,
                 selectedRestaurantId = null,
-                statusMessage = "Order $orderId placed!"
-            )
-        }
-
-        viewModelScope.launch {
-            delay(3500L)
-            updateOrderStage(orderId, 1, eta = if (hasFood) 16 else 7)
-            delay(4500L)
-            updateOrderStage(orderId, 2, eta = if (hasFood) 8 else 3)
-        }
-    }
-
-    private fun updateOrderStage(orderId: String, stage: Int, eta: Int) {
-        _uiState.update { state ->
-            state.copy(
-                orders = state.orders.map {
-                    if (it.orderId == orderId && it.stageIndex < stage) {
-                        it.copy(stageIndex = stage, etaMinutes = eta)
-                    } else it
+                statusMessage = if (matchedShop != null) {
+                    "Order $orderId sent to ${matchedShop.shopName}! Delivery OTP: $otp"
+                } else {
+                    "Order $orderId placed! Delivery OTP: $otp"
                 }
             )
         }
     }
 
     fun advanceOrderStage(orderId: String) {
+        if (!_uiState.value.isAdminUnlocked) {
+            _uiState.update { it.copy(statusMessage = "Only Admin can update order status") }
+            return
+        }
+        val targetOrder = _uiState.value.orders.firstOrNull { it.orderId == orderId } ?: return
+        if (targetOrder.stageIndex >= 2) {
+            _uiState.update {
+                it.copy(statusMessage = "Enter customer's 4-digit OTP to complete delivery")
+            }
+            return
+        }
         _uiState.update { state ->
             state.copy(
                 orders = state.orders.map {
-                    if (it.orderId == orderId && it.stageIndex < 3) {
+                    if (it.orderId == orderId && it.stageIndex < 2) {
                         val nextStage = it.stageIndex + 1
                         val nextEta = when (nextStage) {
                             1 -> if (it.isFoodOrder) 16 else 7
-                            2 -> if (it.isFoodOrder) 6 else 2
-                            else -> 0
+                            else -> if (it.isFoodOrder) 6 else 2
                         }
                         it.copy(stageIndex = nextStage, etaMinutes = nextEta)
                     } else it
                 }
+            )
+        }
+    }
+
+    fun verifyDeliveryOtpAndCompleteOrder(orderId: String, enteredOtp: String): Boolean {
+        val stateSnapshot = _uiState.value
+        if (!stateSnapshot.isAdminUnlocked) {
+            _uiState.update { it.copy(statusMessage = "Only Admin / Rider can verify delivery OTP") }
+            return false
+        }
+        val target = stateSnapshot.orders.firstOrNull { it.orderId == orderId } ?: return false
+        val cleanOtp = enteredOtp.trim()
+        if (cleanOtp.length != 4 || cleanOtp != target.deliveryOtp) {
+            return false
+        }
+        _uiState.update { state ->
+            state.copy(
+                orders = state.orders.map {
+                    if (it.orderId == orderId) {
+                        it.copy(
+                            stageIndex = 3,
+                            etaMinutes = 0,
+                            isOtpVerified = true
+                        )
+                    } else it
+                },
+                statusMessage = "OTP verified! Ride finished & $orderId delivered"
+            )
+        }
+        return true
+    }
+
+    fun addExtraProductToOrder(orderId: String, product: GroceryProduct) {
+        val safeIdx = product.defaultVariantIndex.coerceIn(0, product.variants.lastIndex)
+        val variant = product.variants[safeIdx]
+        val extraCartItem = CartItem(
+            id = "${product.id}__${variant.id}",
+            productId = product.id,
+            variantId = variant.id,
+            title = product.name,
+            brandOrRestaurant = product.brand,
+            unitLabel = variant.label,
+            price = variant.price,
+            mrp = variant.mrp,
+            quantity = 1,
+            isGrocery = true,
+            isVeg = product.isVeg,
+            imageUrl = product.imageUrl,
+            sellerShopId = product.sellerShopId
+        )
+        appendExtraCartItemToOrder(orderId, extraCartItem)
+    }
+
+    fun addExtraDishToOrder(orderId: String, dish: MenuItem) {
+        val restShopId = _uiState.value.restaurants.firstOrNull { it.id == dish.restaurantId }?.sellerShopId
+        val extraCartItem = CartItem(
+            id = dish.id,
+            productId = dish.id,
+            variantId = "regular",
+            title = dish.name,
+            brandOrRestaurant = dish.restaurantName,
+            unitLabel = "1 portion",
+            price = dish.price,
+            mrp = dish.mrp,
+            quantity = 1,
+            isGrocery = false,
+            isVeg = dish.isVeg,
+            imageUrl = dish.imageUrl,
+            sellerShopId = restShopId
+        )
+        appendExtraCartItemToOrder(orderId, extraCartItem)
+    }
+
+    fun addCustomExtraToOrder(orderId: String, itemName: String, price: Int, unitLabel: String = "1 extra") {
+        val cleanName = itemName.trim()
+        if (cleanName.isEmpty()) return
+        val safePrice = price.coerceAtLeast(1)
+        val customId = nextId("extra_item")
+        val extraCartItem = CartItem(
+            id = customId,
+            productId = customId,
+            variantId = "custom",
+            title = cleanName,
+            brandOrRestaurant = "Extra Item",
+            unitLabel = unitLabel.trim().ifEmpty { "1 extra" },
+            price = safePrice,
+            mrp = safePrice,
+            quantity = 1,
+            isGrocery = true,
+            isVeg = true
+        )
+        appendExtraCartItemToOrder(orderId, extraCartItem)
+    }
+
+    private fun appendExtraCartItemToOrder(orderId: String, extraItem: CartItem) {
+        _uiState.update { state ->
+            val target = state.orders.firstOrNull { it.orderId == orderId } ?: return@update state
+            if (target.stageIndex >= 2 && !state.isAdminUnlocked) {
+                return@update state.copy(statusMessage = "Order is already out for delivery")
+            }
+            val updatedItems = if (target.reorderCartItems.any { it.id == extraItem.id }) {
+                target.reorderCartItems.map {
+                    if (it.id == extraItem.id) it.copy(quantity = it.quantity + 1) else it
+                }
+            } else {
+                target.reorderCartItems + extraItem
+            }
+            val newItemsCount = target.itemsCount + 1
+            val savedDelta = (extraItem.mrp - extraItem.price).coerceAtLeast(0)
+            val newSummary = "${target.summaryTitle} + ${extraItem.title}"
+            state.copy(
+                orders = state.orders.map {
+                    if (it.orderId == orderId) {
+                        it.copy(
+                            summaryTitle = newSummary,
+                            itemsCount = newItemsCount,
+                            totalPaid = it.totalPaid + extraItem.price,
+                            totalSaved = it.totalSaved + savedDelta,
+                            reorderCartItems = updatedItems
+                        )
+                    } else it
+                },
+                statusMessage = "Added ${extraItem.title} (+₹${extraItem.price}) to $orderId"
             )
         }
     }
@@ -681,6 +931,7 @@ class QuickDropViewModel : ViewModel() {
                 isAdminMode = true,
                 isAdminUnlocked = false,
                 adminUnlockError = null,
+                isShopkeeperMode = false,
                 selectedRestaurantId = null,
                 trackingOrderId = null
             )
@@ -793,6 +1044,10 @@ class QuickDropViewModel : ViewModel() {
     // ==================== ORDER DISPATCH CRUD ====================
 
     fun assignOrderRider(orderId: String, riderName: String) {
+        if (!_uiState.value.isAdminUnlocked) {
+            _uiState.update { it.copy(statusMessage = "Only Admin can assign rider") }
+            return
+        }
         _uiState.update { state ->
             state.copy(
                 orders = state.orders.map {
@@ -804,6 +1059,10 @@ class QuickDropViewModel : ViewModel() {
     }
 
     fun updateOrderDetails(orderId: String, etaMinutes: Int, stageIndex: Int, deliveryAddress: String) {
+        if (!_uiState.value.isAdminUnlocked) {
+            _uiState.update { it.copy(statusMessage = "Only Admin can edit order details") }
+            return
+        }
         _uiState.update { state ->
             state.copy(
                 orders = state.orders.map {
@@ -821,6 +1080,7 @@ class QuickDropViewModel : ViewModel() {
     }
 
     fun deleteOrder(orderId: String) {
+        if (!_uiState.value.isAdminUnlocked) return
         _uiState.update { state ->
             state.copy(
                 orders = state.orders.filterNot { it.orderId == orderId },
@@ -927,32 +1187,48 @@ class QuickDropViewModel : ViewModel() {
         mrp: Int,
         isVeg: Boolean,
         etaMinutes: Int = 10,
-        isBestseller: Boolean = true
+        isBestseller: Boolean = true,
+        badgeText: String? = "NEW",
+        isMissedQuickAdd: Boolean = false,
+        extraVariants: List<ProductVariant> = emptyList()
     ) {
         val cleanName = name.trim()
         if (cleanName.isEmpty()) return
         val safePrice = price.coerceAtLeast(1)
         val safeMrp = mrp.coerceAtLeast(safePrice)
         val prodId = nextId("prod_custom")
+        val primaryVariant = ProductVariant(
+            id = "${prodId}_v1",
+            label = unitLabel.trim().ifEmpty { "1 pack" },
+            price = safePrice,
+            mrp = safeMrp
+        )
+        val allVariants = if (extraVariants.isNotEmpty()) {
+            extraVariants.mapIndexed { idx, v ->
+                val vp = v.price.coerceAtLeast(1)
+                v.copy(
+                    id = "${prodId}_v_${idx + 1}",
+                    label = v.label.trim().ifEmpty { "Pack ${idx + 1}" },
+                    price = vp,
+                    mrp = v.mrp.coerceAtLeast(vp)
+                )
+            }
+        } else {
+            listOf(primaryVariant)
+        }
         val newProd = GroceryProduct(
             id = prodId,
             brand = brand.trim().ifEmpty { "QuickDrop Fresh" },
             name = cleanName,
             categoryId = categoryId,
             subcategory = subcategory.ifBlank { "All" },
-            variants = listOf(
-                ProductVariant(
-                    id = "${prodId}_v1",
-                    label = unitLabel.trim().ifEmpty { "1 pack" },
-                    price = safePrice,
-                    mrp = safeMrp
-                )
-            ),
+            variants = allVariants,
             etaMinutes = etaMinutes.coerceIn(5, 60),
             isVeg = isVeg,
             isInStock = true,
             isBestseller = isBestseller,
-            badgeText = "NEW",
+            isMissedQuickAdd = isMissedQuickAdd,
+            badgeText = badgeText?.trim()?.takeIf { it.isNotEmpty() },
             tintHex = 0xFFE8F5E9
         )
         _uiState.update { state ->
@@ -1338,5 +1614,530 @@ class QuickDropViewModel : ViewModel() {
                 state.copy(groceryPromos = state.groceryPromos.filterNot { it.id == promoId }, statusMessage = "Removed grocery banner")
             }
         }
+    }
+
+    // ==================== SHOPKEEPER APPLICATION, LISTING & PICKUP OTP ====================
+
+    fun openShopkeeperPortal() {
+        _uiState.update {
+            it.copy(
+                isShopkeeperMode = true,
+                isAdminMode = false,
+                selectedRestaurantId = null,
+                trackingOrderId = null
+            )
+        }
+    }
+
+    fun closeShopkeeperPortal() {
+        _uiState.update { it.copy(isShopkeeperMode = false) }
+    }
+
+    fun selectShopApplication(appId: String) {
+        _uiState.update { it.copy(activeShopApplicationId = appId) }
+    }
+
+    fun submitShopApplication(
+        shopName: String,
+        ownerName: String,
+        phone: String,
+        shopType: ShopType,
+        area: String,
+        fullAddress: String,
+        etaMins: Int,
+        gstOrLicenseNote: String,
+        initialListings: List<ShopListingDraft>
+    ): String? {
+        val cleanShop = shopName.trim()
+        val cleanOwner = ownerName.trim()
+        val cleanPhone = phone.trim()
+        if (cleanShop.isEmpty() || cleanOwner.isEmpty() || cleanPhone.isEmpty()) {
+            _uiState.update { it.copy(statusMessage = "Please fill Shop Name, Owner Name & Phone") }
+            return null
+        }
+        val appId = nextId("shop_app")
+        val cleanListings = initialListings.mapIndexed { idx, item ->
+            val safePrice = item.price.coerceAtLeast(1)
+            item.copy(
+                id = if (item.id.isBlank()) "${appId}_draft_${idx + 1}" else item.id,
+                title = item.title.trim().ifEmpty { "Shop Item ${idx + 1}" },
+                price = safePrice,
+                mrp = item.mrp.coerceAtLeast(safePrice),
+                unitOrPortion = item.unitOrPortion.trim().ifEmpty { "1 pack" },
+                publishedTargetId = null
+            )
+        }
+        val application = ShopkeeperApplication(
+            id = appId,
+            shopName = cleanShop,
+            ownerName = cleanOwner,
+            phone = cleanPhone,
+            shopType = shopType,
+            area = area.trim().ifEmpty { "Local Market" },
+            fullAddress = fullAddress.trim().ifEmpty { area.trim().ifEmpty { "Main Market Road" } },
+            etaMins = etaMins.coerceIn(8, 60),
+            gstOrLicenseNote = gstOrLicenseNote.trim(),
+            submittedAtText = "Just now",
+            status = ShopApplicationStatus.PENDING_REVIEW,
+            listings = cleanListings
+        )
+        _uiState.update { state ->
+            state.copy(
+                shopApplications = listOf(application) + state.shopApplications,
+                activeShopApplicationId = appId,
+                statusMessage = "Application submitted for \"$cleanShop\"! Waiting for Admin approval."
+            )
+        }
+        return appId
+    }
+
+    fun addListingToShop(
+        appId: String,
+        title: String,
+        categoryOrCuisine: String,
+        unitOrPortion: String,
+        price: Int,
+        mrp: Int,
+        isVeg: Boolean,
+        description: String = ""
+    ) {
+        val cleanTitle = title.trim()
+        if (cleanTitle.isEmpty()) return
+        val safePrice = price.coerceAtLeast(1)
+        val safeMrp = mrp.coerceAtLeast(safePrice)
+        val listingId = nextId("shop_item")
+
+        _uiState.update { state ->
+            val app = state.shopApplications.firstOrNull { it.id == appId } ?: return@update state
+            val draft = ShopListingDraft(
+                id = listingId,
+                title = cleanTitle,
+                categoryOrCuisine = categoryOrCuisine.ifBlank {
+                    if (app.shopType == ShopType.GROCERY) "dairy" else "Recommended"
+                },
+                unitOrPortion = unitOrPortion.trim().ifEmpty {
+                    if (app.shopType == ShopType.GROCERY) "1 pack" else "1 portion"
+                },
+                price = safePrice,
+                mrp = safeMrp,
+                isVeg = isVeg,
+                description = description.trim()
+            )
+
+            if (app.status != ShopApplicationStatus.APPROVED) {
+                val updatedApps = state.shopApplications.map {
+                    if (it.id == appId) it.copy(listings = listOf(draft) + it.listings) else it
+                }
+                return@update state.copy(
+                    shopApplications = updatedApps,
+                    statusMessage = "Added \"$cleanTitle\" to application (goes live after Admin approval)"
+                )
+            }
+
+            // Already approved -> publish live immediately
+            if (app.shopType == ShopType.GROCERY) {
+                val prodId = nextId("prod_shop")
+                val validCategoryId = if (state.categories.any { it.id == draft.categoryOrCuisine }) {
+                    draft.categoryOrCuisine
+                } else {
+                    state.categories.firstOrNull()?.id ?: "dairy"
+                }
+                val liveProduct = GroceryProduct(
+                    id = prodId,
+                    brand = app.shopName,
+                    name = draft.title,
+                    categoryId = validCategoryId,
+                    subcategory = "All",
+                    variants = listOf(
+                        ProductVariant(
+                            id = "${prodId}_v1",
+                            label = draft.unitOrPortion,
+                            price = draft.price,
+                            mrp = draft.mrp
+                        )
+                    ),
+                    etaMinutes = app.etaMins.coerceIn(8, 45),
+                    isVeg = draft.isVeg,
+                    isInStock = true,
+                    isBestseller = true,
+                    badgeText = "LOCAL SHOP",
+                    tintHex = 0xFFE8F5E9,
+                    sellerShopId = app.id
+                )
+                val publishedDraft = draft.copy(publishedTargetId = prodId)
+                state.copy(
+                    products = listOf(liveProduct) + state.products,
+                    shopApplications = state.shopApplications.map {
+                        if (it.id == appId) it.copy(listings = listOf(publishedDraft) + it.listings) else it
+                    },
+                    statusMessage = "\"$cleanTitle\" published LIVE on QuickDrop!"
+                )
+            } else {
+                val dishId = nextId("dish_shop")
+                val restId = app.linkedRestaurantId ?: nextId("rest_shop")
+                val liveDish = MenuItem(
+                    id = dishId,
+                    restaurantId = restId,
+                    restaurantName = app.shopName,
+                    name = draft.title,
+                    description = draft.description.ifEmpty { "Freshly prepared by ${app.shopName}" },
+                    price = draft.price,
+                    mrp = draft.mrp,
+                    category = draft.categoryOrCuisine.ifBlank { "Recommended" },
+                    isVeg = draft.isVeg,
+                    isBestseller = true
+                )
+                val hasRest = state.restaurants.any { it.id == restId }
+                val updatedRestaurants = if (hasRest) {
+                    state.restaurants.map { rest ->
+                        if (rest.id == restId) rest.copy(menu = listOf(liveDish) + rest.menu) else rest
+                    }
+                } else {
+                    listOf(
+                        Restaurant(
+                            id = restId,
+                            name = app.shopName,
+                            cuisines = draft.categoryOrCuisine.ifBlank { "Local Kitchen" },
+                            rating = 4.6,
+                            ratingCountText = "New Partner",
+                            deliveryTimeMins = app.etaMins.coerceIn(12, 60),
+                            distanceKm = 1.2,
+                            priceForTwo = (draft.price * 2).coerceAtLeast(150),
+                            offerBanner = "Partner Launch Offer",
+                            area = app.area,
+                            isPureVeg = draft.isVeg,
+                            isAcceptingOrders = true,
+                            menu = listOf(liveDish),
+                            sellerShopId = app.id
+                        )
+                    ) + state.restaurants
+                }
+                val publishedDraft = draft.copy(publishedTargetId = dishId)
+                state.copy(
+                    restaurants = updatedRestaurants,
+                    shopApplications = state.shopApplications.map {
+                        if (it.id == appId) {
+                            it.copy(
+                                linkedRestaurantId = restId,
+                                listings = listOf(publishedDraft) + it.listings
+                            )
+                        } else it
+                    },
+                    statusMessage = "\"$cleanTitle\" added LIVE to ${app.shopName} menu!"
+                )
+            }
+        }
+    }
+
+    fun updateShopListingPrice(appId: String, listingId: String, newPrice: Int, newMrp: Int) {
+        val safePrice = newPrice.coerceAtLeast(1)
+        val safeMrp = newMrp.coerceAtLeast(safePrice)
+        _uiState.update { state ->
+            val app = state.shopApplications.firstOrNull { it.id == appId } ?: return@update state
+            val targetListing = app.listings.firstOrNull { it.id == listingId } ?: return@update state
+            val updatedApps = state.shopApplications.map {
+                if (it.id == appId) {
+                    it.copy(
+                        listings = it.listings.map { item ->
+                            if (item.id == listingId) item.copy(price = safePrice, mrp = safeMrp) else item
+                        }
+                    )
+                } else it
+            }
+
+            val targetId = targetListing.publishedTargetId
+            if (app.status != ShopApplicationStatus.APPROVED || targetId == null) {
+                return@update state.copy(
+                    shopApplications = updatedApps,
+                    statusMessage = "Updated draft price to ₹$safePrice"
+                )
+            }
+
+            if (app.shopType == ShopType.GROCERY) {
+                val updatedProds = state.products.map { prod ->
+                    if (prod.id == targetId) {
+                        prod.copy(
+                            variants = prod.variants.mapIndexed { idx, v ->
+                                if (idx == 0) v.copy(price = safePrice, mrp = safeMrp) else v
+                            }
+                        )
+                    } else prod
+                }
+                val updatedCart = state.cartItems.map { ci ->
+                    if (ci.productId == targetId) ci.copy(price = safePrice, mrp = safeMrp) else ci
+                }
+                state.copy(
+                    shopApplications = updatedApps,
+                    products = updatedProds,
+                    cartItems = updatedCart,
+                    statusMessage = "Live price updated to ₹$safePrice"
+                )
+            } else {
+                val updatedRests = state.restaurants.map { rest ->
+                    if (rest.id == app.linkedRestaurantId) {
+                        rest.copy(
+                            menu = rest.menu.map { dish ->
+                                if (dish.id == targetId) dish.copy(price = safePrice, mrp = safeMrp) else dish
+                            }
+                        )
+                    } else rest
+                }
+                val updatedCart = state.cartItems.map { ci ->
+                    if (ci.productId == targetId) ci.copy(price = safePrice, mrp = safeMrp) else ci
+                }
+                state.copy(
+                    shopApplications = updatedApps,
+                    restaurants = updatedRests,
+                    cartItems = updatedCart,
+                    statusMessage = "Live dish price updated to ₹$safePrice"
+                )
+            }
+        }
+    }
+
+    fun removeShopListing(appId: String, listingId: String) {
+        _uiState.update { state ->
+            val app = state.shopApplications.firstOrNull { it.id == appId } ?: return@update state
+            val targetListing = app.listings.firstOrNull { it.id == listingId } ?: return@update state
+            val targetId = targetListing.publishedTargetId
+            val updatedApps = state.shopApplications.map {
+                if (it.id == appId) {
+                    it.copy(listings = it.listings.filterNot { item -> item.id == listingId })
+                } else it
+            }
+            if (targetId == null) {
+                return@update state.copy(shopApplications = updatedApps, statusMessage = "Listing removed")
+            }
+            val updatedProds = state.products.filterNot { it.id == targetId }
+            val updatedRests = state.restaurants.map { rest ->
+                if (rest.id == app.linkedRestaurantId) {
+                    rest.copy(menu = rest.menu.filterNot { it.id == targetId })
+                } else rest
+            }
+            state.copy(
+                shopApplications = updatedApps,
+                products = updatedProds,
+                restaurants = updatedRests,
+                cartItems = state.cartItems.filterNot { it.productId == targetId },
+                statusMessage = "Removed \"${targetListing.title}\""
+            )
+        }
+    }
+
+    fun approveShopApplication(appId: String, reviewNote: String = "Verified & activated by Admin") {
+        if (!_uiState.value.isAdminUnlocked) {
+            _uiState.update { it.copy(statusMessage = "Only Admin can approve shopkeepers") }
+            return
+        }
+        _uiState.update { state ->
+            val app = state.shopApplications.firstOrNull { it.id == appId } ?: return@update state
+
+            // Avoid duplicate publishing if already approved
+            if (app.status == ShopApplicationStatus.APPROVED) {
+                return@update state.copy(statusMessage = "\"${app.shopName}\" is already LIVE")
+            }
+
+            if (app.shopType == ShopType.GROCERY) {
+                val existingIds = state.products.map { it.id }.toSet()
+                val newProducts = mutableListOf<GroceryProduct>()
+                val updatedListings = app.listings.map { draft ->
+                    val prodId = draft.publishedTargetId ?: nextId("prod_shop")
+                    val validCatId = if (state.categories.any { it.id == draft.categoryOrCuisine }) {
+                        draft.categoryOrCuisine
+                    } else {
+                        state.categories.firstOrNull()?.id ?: "dairy"
+                    }
+                    if (!existingIds.contains(prodId)) {
+                        newProducts += GroceryProduct(
+                            id = prodId,
+                            brand = app.shopName,
+                            name = draft.title,
+                            categoryId = validCatId,
+                            subcategory = "All",
+                            variants = listOf(
+                                ProductVariant(
+                                    id = "${prodId}_v1",
+                                    label = draft.unitOrPortion,
+                                    price = draft.price,
+                                    mrp = draft.mrp
+                                )
+                            ),
+                            etaMinutes = app.etaMins.coerceIn(8, 45),
+                            isVeg = draft.isVeg,
+                            isInStock = true,
+                            isBestseller = true,
+                            badgeText = "VERIFIED SHOP",
+                            tintHex = 0xFFE8F5E9,
+                            sellerShopId = app.id
+                        )
+                    }
+                    draft.copy(publishedTargetId = prodId)
+                }
+                val updatedApps = state.shopApplications.map {
+                    if (it.id == appId) {
+                        it.copy(
+                            status = ShopApplicationStatus.APPROVED,
+                            adminReviewNote = reviewNote.trim().ifEmpty { "Approved by Admin" },
+                            listings = updatedListings
+                        )
+                    } else it
+                }
+                state.copy(
+                    products = newProducts + state.products,
+                    shopApplications = updatedApps,
+                    statusMessage = "Approved \"${app.shopName}\"! ${newProducts.size} items & Order/OTP system now LIVE."
+                )
+            } else {
+                val restId = app.linkedRestaurantId ?: nextId("rest_shop")
+                val updatedListings = app.listings.map { draft ->
+                    draft.copy(publishedTargetId = draft.publishedTargetId ?: nextId("dish_shop"))
+                }
+                val menuItems = updatedListings.map { draft ->
+                    MenuItem(
+                        id = draft.publishedTargetId!!,
+                        restaurantId = restId,
+                        restaurantName = app.shopName,
+                        name = draft.title,
+                        description = draft.description.ifEmpty { "Prepared fresh by ${app.shopName}" },
+                        price = draft.price,
+                        mrp = draft.mrp,
+                        category = draft.categoryOrCuisine.ifBlank { "Recommended" },
+                        isVeg = draft.isVeg,
+                        isBestseller = true
+                    )
+                }.ifEmpty {
+                    listOf(
+                        MenuItem(
+                            id = nextId("dish_shop"),
+                            restaurantId = restId,
+                            restaurantName = app.shopName,
+                            name = "${app.shopName} Special Combo",
+                            description = "House special freshly prepared meal.",
+                            price = 229,
+                            mrp = 279,
+                            category = "Recommended",
+                            isVeg = true,
+                            isBestseller = true
+                        )
+                    )
+                }
+                val avgPrice = (menuItems.sumOf { it.price } / menuItems.size.coerceAtLeast(1)) * 2
+                val liveRestaurant = Restaurant(
+                    id = restId,
+                    name = app.shopName,
+                    cuisines = updatedListings.map { it.categoryOrCuisine }.distinct().joinToString(", ").ifEmpty { "Partner Kitchen" },
+                    rating = 4.6,
+                    ratingCountText = "Verified Partner",
+                    deliveryTimeMins = app.etaMins.coerceIn(12, 60),
+                    distanceKm = 1.3,
+                    priceForTwo = avgPrice.coerceAtLeast(150),
+                    offerBanner = "Flat 20% OFF Launch Offer",
+                    area = app.area,
+                    isPureVeg = menuItems.all { it.isVeg },
+                    isAcceptingOrders = true,
+                    menu = menuItems,
+                    sellerShopId = app.id
+                )
+                val updatedRests = listOf(liveRestaurant) + state.restaurants.filterNot { it.id == restId }
+                val updatedApps = state.shopApplications.map {
+                    if (it.id == appId) {
+                        it.copy(
+                            status = ShopApplicationStatus.APPROVED,
+                            adminReviewNote = reviewNote.trim().ifEmpty { "Approved by Admin" },
+                            linkedRestaurantId = restId,
+                            listings = updatedListings
+                        )
+                    } else it
+                }
+                state.copy(
+                    restaurants = updatedRests,
+                    shopApplications = updatedApps,
+                    statusMessage = "Approved \"${app.shopName}\"! Restaurant, menu & Order/OTP system now LIVE."
+                )
+            }
+        }
+    }
+
+    fun rejectShopApplication(appId: String, reason: String) {
+        if (!_uiState.value.isAdminUnlocked) {
+            _uiState.update { it.copy(statusMessage = "Only Admin can reject shop applications") }
+            return
+        }
+        _uiState.update { state ->
+            val app = state.shopApplications.firstOrNull { it.id == appId } ?: return@update state
+            val cleanReason = reason.trim().ifEmpty { "Needs verification details before approval." }
+            val updatedApps = state.shopApplications.map {
+                if (it.id == appId) {
+                    it.copy(
+                        status = ShopApplicationStatus.REJECTED,
+                        adminReviewNote = cleanReason,
+                        listings = it.listings.map { d -> d.copy(publishedTargetId = null) }
+                    )
+                } else it
+            }
+            val updatedProducts = state.products.filterNot { it.sellerShopId == appId }
+            val updatedRestaurants = state.restaurants.filterNot { it.sellerShopId == appId }
+            val updatedCart = state.cartItems.filterNot { it.sellerShopId == appId }
+            state.copy(
+                shopApplications = updatedApps,
+                products = updatedProducts,
+                restaurants = updatedRestaurants,
+                cartItems = updatedCart,
+                selectedRestaurantId = if (state.selectedRestaurantId == app.linkedRestaurantId) null else state.selectedRestaurantId,
+                statusMessage = "Rejected \"${app.shopName}\""
+            )
+        }
+    }
+
+    fun shopkeeperMarkOrderPacked(appId: String, orderId: String) {
+        _uiState.update { state ->
+            val shop = state.shopApplications.firstOrNull { it.id == appId }
+            if (shop == null || shop.status != ShopApplicationStatus.APPROVED) {
+                return@update state.copy(statusMessage = "Shop must be approved by Admin before handling orders")
+            }
+            val order = state.orders.firstOrNull { it.orderId == orderId } ?: return@update state
+            val belongsToShop = order.shopId == appId || order.reorderCartItems.any { it.sellerShopId == appId }
+            if (!belongsToShop) return@update state
+            if (order.stageIndex != 0) return@update state
+            state.copy(
+                orders = state.orders.map {
+                    if (it.orderId == orderId) {
+                        it.copy(
+                            stageIndex = 1,
+                            etaMinutes = if (it.isFoodOrder) 14 else 6
+                        )
+                    } else it
+                },
+                statusMessage = "Order $orderId marked Packed! Share Pickup OTP ${order.shopPickupOtp} with Rider ${order.riderName}."
+            )
+        }
+    }
+
+    fun verifyShopPickupOtpAndDispatch(orderId: String, enteredOtp: String): Boolean {
+        val stateSnapshot = _uiState.value
+        if (!stateSnapshot.isAdminUnlocked) {
+            _uiState.update { it.copy(statusMessage = "Only Admin / Rider can verify Shop Pickup OTP") }
+            return false
+        }
+        val target = stateSnapshot.orders.firstOrNull { it.orderId == orderId } ?: return false
+        val cleanOtp = enteredOtp.trim()
+        if (cleanOtp.length != 4 || cleanOtp != target.shopPickupOtp) {
+            return false
+        }
+        _uiState.update { state ->
+            state.copy(
+                orders = state.orders.map {
+                    if (it.orderId == orderId) {
+                        it.copy(
+                            stageIndex = it.stageIndex.coerceAtLeast(2).coerceAtMost(2),
+                            etaMinutes = if (it.isFoodOrder) 8 else 4,
+                            isShopPickupOtpVerified = true
+                        )
+                    } else it
+                },
+                statusMessage = "Shop Pickup OTP verified! Rider ${target.riderName} picked up $orderId."
+            )
+        }
+        return true
     }
 }

@@ -12,8 +12,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
@@ -44,6 +46,7 @@ import com.example.ui.theme.*
 fun QuickDropTopHeader(
     selectedAddress: DeliveryAddress,
     appMode: AppMode,
+    isDetectingGpsLocation: Boolean = false,
     onLocationClick: () -> Unit,
     onProfileClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -117,9 +120,9 @@ fun QuickDropTopHeader(
                             }
                         }
                         Text(
-                            text = "QuickDrop",
+                            text = if (isDetectingGpsLocation) "Locating GPS..." else "QuickDrop",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (isDetectingGpsLocation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1
                         )
                     }
@@ -133,7 +136,7 @@ fun QuickDropTopHeader(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = selectedAddress.areaShort,
+                            text = if (isDetectingGpsLocation) "Detecting current location..." else selectedAddress.areaShort,
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
@@ -541,6 +544,7 @@ fun AddressPickerBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -549,6 +553,15 @@ fun AddressPickerBottomSheet(
                 text = "Select Delivery Location",
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurface
+            )
+
+            InteractiveAddressMapCard(
+                selectedAreaLabel = customArea,
+                onMapPinPicked = { area, hint ->
+                    customArea = area
+                    customFull = hint
+                    showAddForm = true
+                }
             )
 
             addresses.forEach { addr ->

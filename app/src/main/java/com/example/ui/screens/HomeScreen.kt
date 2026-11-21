@@ -603,7 +603,7 @@ private fun LiveOrderFloatingBanner(
                         modifier = Modifier.size(18.dp)
                     )
                 }
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         text = "$stageTitle • ETA ${order.etaMinutes} mins",
                         style = MaterialTheme.typography.labelLarge,
@@ -616,6 +616,21 @@ private fun LiveOrderFloatingBanner(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (order.stageIndex < 3) {
+                        Surface(
+                            color = QuickDropSecondaryContainer.copy(alpha = 0.22f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "Delivery OTP: ${order.deliveryOtp}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = QuickDropSecondaryContainer,
+                                modifier = Modifier
+                                    .padding(horizontal = 7.dp, vertical = 2.dp)
+                                    .testTag("home_banner_delivery_otp")
+                            )
+                        }
+                    }
                 }
             }
             Text(

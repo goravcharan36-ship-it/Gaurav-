@@ -38,6 +38,8 @@ fun CartScreen(
     onDecrementCartItem: (String) -> Unit,
     onEmptyCart: () -> Unit,
     onAddQuickProduct: (GroceryProduct) -> Unit,
+    onAddDish: (MenuItem) -> Unit,
+    onAddCustomCartItem: (name: String, price: Int) -> Unit,
     onApplyCoupon: (String?) -> Unit,
     onToggleInstruction: (String) -> Unit,
     onToggleTip: (Int) -> Unit,
@@ -50,6 +52,7 @@ fun CartScreen(
 ) {
     var showCouponSheet by remember { mutableStateOf(false) }
     var showPaymentSheet by remember { mutableStateOf(false) }
+    var showExtraItemsSheet by remember { mutableStateOf(false) }
 
     val bill = uiState.bill
 
@@ -251,16 +254,48 @@ fun CartScreen(
                             }
                         }
 
-                        Text(
-                            text = "Empty Cart",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable(onClick = onEmptyCart)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .testTag("empty_cart_button")
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { showExtraItemsSheet = true }
+                                    .testTag("cart_add_extra_items_btn"),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                shape = CircleShape
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "Add Extra",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "Empty Cart",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(onClick = onEmptyCart)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .testTag("empty_cart_button")
+                            )
+                        }
                     }
 
                     Surface(
@@ -994,6 +1029,20 @@ fun CartScreen(
                 onPlaceOrder(method)
             },
             onDismiss = { showPaymentSheet = false }
+        )
+    }
+
+    if (showExtraItemsSheet) {
+        AddExtraItemsBottomSheet(
+            title = "Add Extra Items to Cart",
+            subtitle = "Quickly add groceries, food dishes, or any custom extra item",
+            products = uiState.products,
+            restaurants = uiState.restaurants,
+            allowCustomItem = true,
+            onAddProduct = onAddQuickProduct,
+            onAddDish = onAddDish,
+            onAddCustomExtra = onAddCustomCartItem,
+            onDismiss = { showExtraItemsSheet = false }
         )
     }
 }

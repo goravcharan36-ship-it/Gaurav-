@@ -34,11 +34,13 @@ fun ProfileScreen(
     onToggleDarkTheme: () -> Unit,
     onOpenOrderTracking: (String) -> Unit,
     onReorder: (ActiveOrder) -> Unit,
+    onOpenShopkeeperPortal: () -> Unit,
     onOpenAdminPanel: () -> Unit,
     bottomContentPadding: PaddingValues,
     modifier: Modifier = Modifier
 ) {
     var showRefundInfoDialog by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
 
     val totalLifetimeSavings = uiState.orders.sumOf { it.totalSaved } + 340
 
@@ -49,11 +51,75 @@ fun ProfileScreen(
         contentPadding = PaddingValues(
             start = 16.dp,
             end = 16.dp,
-            top = 12.dp,
+            top = 8.dp,
             bottom = bottomContentPadding.calculateBottomPadding() + 24.dp
         ),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Profile Header with discreet Three-Dot Menu
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "My Account",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Box {
+                    IconButton(
+                        onClick = { showOverflowMenu = true },
+                        modifier = Modifier.testTag("profile_three_dot_menu")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "More options",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Manage Addresses") },
+                            leadingIcon = { Icon(Icons.Filled.LocationOn, contentDescription = null) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onManageAddressesClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Refund Policy") },
+                            leadingIcon = { Icon(Icons.Filled.VerifiedUser, contentDescription = null) },
+                            onClick = {
+                                showOverflowMenu = false
+                                showRefundInfoDialog = true
+                            }
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Admin Portal") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.AdminPanelSettings,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            modifier = Modifier.testTag("menu_open_admin_panel"),
+                            onClick = {
+                                showOverflowMenu = false
+                                onOpenAdminPanel()
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
         // User Profile & Savings Hero Card
         item {
             Surface(
@@ -146,24 +212,26 @@ fun ProfileScreen(
             }
         }
 
-        // Operations & Merchant Admin Panel Entry Card
+        // Dukaandar / Partner Shopkeeper Portal Entry Card
         item {
+            val approvedCount = uiState.shopApplications.count { it.status == com.example.model.ShopApplicationStatus.APPROVED }
+            val pendingCount = uiState.pendingShopApplicationsCount
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable(onClick = onOpenAdminPanel)
-                    .testTag("open_admin_panel_button"),
-                color = MaterialTheme.colorScheme.inverseSurface,
+                    .clickable(onClick = onOpenShopkeeperPortal)
+                    .testTag("profile_open_shopkeeper_portal"),
+                color = QuickDropSecondaryContainer.copy(alpha = 0.48f),
                 shape = RoundedCornerShape(16.dp),
-                shadowElevation = 2.dp
+                shadowElevation = 1.dp
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -171,36 +239,40 @@ fun ProfileScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Surface(
-                            modifier = Modifier.size(42.dp),
+                            modifier = Modifier.size(44.dp),
                             shape = RoundedCornerShape(12.dp),
-                            color = QuickDropSecondaryContainer
+                            color = MaterialTheme.colorScheme.primary
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Filled.AdminPanelSettings,
+                                    imageVector = Icons.Filled.Storefront,
                                     contentDescription = null,
-                                    tint = QuickDropOnSecondaryFixed,
-                                    modifier = Modifier.size(22.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
                         Column {
                             Text(
-                                text = "Admin Operations Panel",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White
+                                text = "Sell on QuickDrop • Partner Shop",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = QuickDropOnSecondaryFixed
                             )
                             Text(
-                                text = "Manage orders, darkstore stock, restaurants & promos",
+                                text = when {
+                                    approvedCount > 0 -> "$approvedCount shop LIVE • View orders & Rider Pickup OTP"
+                                    pendingCount > 0 -> "$pendingCount application in review • Add listings anytime"
+                                    else -> "Apply for your shop, add listings & receive orders"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.78f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                     Icon(
                         imageVector = Icons.Filled.ChevronRight,
-                        contentDescription = "Open Admin Panel",
-                        tint = QuickDropSecondaryContainer
+                        contentDescription = "Open Shopkeeper Portal",
+                        tint = QuickDropOnSecondaryFixed
                     )
                 }
             }
@@ -418,6 +490,38 @@ fun ProfileScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+
+                    Surface(
+                        color = if (order.stageIndex >= 3) {
+                            VegGreen.copy(alpha = 0.1f)
+                        } else {
+                            QuickDropSecondaryContainer.copy(alpha = 0.45f)
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("profile_order_otp_${order.orderId}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (order.stageIndex >= 3) Icons.Filled.Verified else Icons.Filled.Pin,
+                                contentDescription = null,
+                                tint = if (order.stageIndex >= 3) VegGreen else QuickDropOnSecondaryFixed,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = if (order.stageIndex >= 3) {
+                                    "OTP Verified (${order.deliveryOtp}) • Delivered"
+                                } else {
+                                    "Delivery OTP: ${order.deliveryOtp} • Give to rider at doorstep"
+                                },
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (order.stageIndex >= 3) VegGreen else QuickDropOnSecondaryFixed
+                            )
+                        }
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

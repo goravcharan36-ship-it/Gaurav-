@@ -16,9 +16,50 @@ enum class BottomTab(val label: String) {
 enum class AdminTab(val label: String) {
     OVERVIEW("Overview"),
     ORDERS("Orders"),
+    SELLERS("Shop Requests"),
     INVENTORY("Inventory"),
     PARTNERS("Partners")
 }
+
+enum class ShopType(val label: String) {
+    GROCERY("Grocery / Kirana"),
+    FOOD("Restaurant / Kitchen")
+}
+
+enum class ShopApplicationStatus(val label: String) {
+    PENDING_REVIEW("Pending Admin Review"),
+    APPROVED("Approved & Live"),
+    REJECTED("Rejected")
+}
+
+data class ShopListingDraft(
+    val id: String,
+    val title: String,
+    val categoryOrCuisine: String,
+    val unitOrPortion: String,
+    val price: Int,
+    val mrp: Int,
+    val isVeg: Boolean = true,
+    val description: String = "",
+    val publishedTargetId: String? = null
+)
+
+data class ShopkeeperApplication(
+    val id: String,
+    val shopName: String,
+    val ownerName: String,
+    val phone: String,
+    val shopType: ShopType,
+    val area: String,
+    val fullAddress: String,
+    val etaMins: Int = 15,
+    val gstOrLicenseNote: String = "",
+    val submittedAtText: String = "Just now",
+    val status: ShopApplicationStatus = ShopApplicationStatus.PENDING_REVIEW,
+    val adminReviewNote: String? = null,
+    val linkedRestaurantId: String? = null,
+    val listings: List<ShopListingDraft> = emptyList()
+)
 
 enum class CatalogSortOption(val label: String) {
     RELEVANCE("Relevance"),
@@ -67,7 +108,8 @@ data class GroceryProduct(
     val isMissedQuickAdd: Boolean = false,
     val badgeText: String? = null,
     val imageUrl: String = "",
-    val tintHex: Long = 0xFFF0F3FF
+    val tintHex: Long = 0xFFF0F3FF,
+    val sellerShopId: String? = null
 )
 
 data class GroceryCategory(
@@ -132,7 +174,8 @@ data class Restaurant(
     val isPromoted: Boolean = false,
     val isAcceptingOrders: Boolean = true,
     val imageUrl: String = "",
-    val menu: List<MenuItem>
+    val menu: List<MenuItem>,
+    val sellerShopId: String? = null
 )
 
 data class CartItem(
@@ -147,7 +190,8 @@ data class CartItem(
     val quantity: Int,
     val isGrocery: Boolean,
     val isVeg: Boolean,
-    val imageUrl: String = ""
+    val imageUrl: String = "",
+    val sellerShopId: String? = null
 )
 
 data class Coupon(
@@ -191,5 +235,10 @@ data class ActiveOrder(
     val hubOrKitchen: String,
     val deliveryAddress: String,
     val isFoodOrder: Boolean,
+    val shopId: String? = null,
+    val shopPickupOtp: String = "6194",
+    val isShopPickupOtpVerified: Boolean = false,
+    val deliveryOtp: String = "4829",
+    val isOtpVerified: Boolean = false,
     val reorderCartItems: List<CartItem> = emptyList()
 )

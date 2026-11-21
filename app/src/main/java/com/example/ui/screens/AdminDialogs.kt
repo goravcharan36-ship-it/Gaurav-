@@ -223,15 +223,21 @@ fun AdminEditOrderDialog(
             ) {
                 Text("Order Stage", style = MaterialTheme.typography.labelMedium)
                 stages.forEachIndexed { idx, label ->
+                    val isDeliveredLocked = idx == 3 && !order.isOtpVerified && order.stageIndex < 3
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         RadioButton(
                             selected = stageIndex == idx,
+                            enabled = !isDeliveredLocked,
                             onClick = { stageIndex = idx }
                         )
-                        Text(label, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = if (isDeliveredLocked) "$label (Requires Customer OTP)" else label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isDeliveredLocked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
                 OutlinedTextField(
@@ -268,25 +274,93 @@ fun AdminEditOrderDialog(
 fun AdminAddProductDialog(
     categories: List<GroceryCategory>,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String, String, Int, Int, Boolean, Int, Boolean) -> Unit
+    onConfirm: (
+        brand: String,
+        name: String,
+        categoryId: String,
+        subcategory: String,
+        unitLabel: String,
+        price: Int,
+        mrp: Int,
+        isVeg: Boolean,
+        etaMinutes: Int,
+        isBestseller: Boolean,
+        badgeText: String?,
+        isMissedQuickAdd: Boolean,
+        extraVariants: List<ProductVariant>,
+        keepOpen: Boolean
+    ) -> Unit
 ) {
     var brand by remember { mutableStateOf("QuickDrop Fresh") }
     var name by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(categories.first()) }
     var catMenuExpanded by remember { mutableStateOf(false) }
-    var unitLabel by remember { mutableStateOf("500 g") }
-    var priceText by remember { mutableStateOf("79") }
-    var mrpText by remember { mutableStateOf("99") }
     var etaText by remember { mutableStateOf("10") }
+    var badgeText by remember { mutableStateOf("NEW") }
     var isVeg by remember { mutableStateOf(true) }
     var isBestseller by remember { mutableStateOf(true) }
+    var isMissedQuickAdd by remember { mutableStateOf(false) }
+
+    val variantStates = remember {
+        mutableStateListOf(
+            ProductVariant(
+                id = "new_v1",
+                label = "500 g",
+                price = 79,
+                mrp = 99
+            )
+        )
+    }
+
+    fun submitProduct(keepOpen: Boolean) {
+        val sanitizedVariants = variantStates.mapIndexed { idx, v ->
+            val safePrice = v.price.coerceAtLeast(1)
+            v.copy(
+                id = "new_v_${idx + 1}",
+                label = v.label.trim().ifEmpty { "1 pack" },
+                price = safePrice,
+                mrp = v.mrp.coerceAtLeast(safePrice)
+            )
+        }
+        val firstVar = sanitizedVariants.first()
+        val eta = etaText.toIntOrNull() ?: 10
+        val sub = selectedCategory.subcategories.getOrElse(1) { "All" }
+        onConfirm(
+            brand,
+            name,
+            selectedCategory.id,
+            sub,
+            firstVar.label,
+            firstVar.price,
+            firstVar.mrp,
+            isVeg,
+            eta,
+            isBestseller,
+            badgeText.trim().takeIf { it.isNotEmpty() },
+            isMissedQuickAdd,
+            sanitizedVariants,
+            keepOpen
+        )
+        if (keepOpen) {
+            name = ""
+            variantStates.clear()
+            variantStates.add(ProductVariant(id = "new_v1", label = "500 g", price = 79, mrp = 99))
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier
+            .fillMaxWidth(0.94f)
+            .padding(vertical = 16.dp),
         title = { Text("Add New Grocery SKU") },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
@@ -330,9 +404,10 @@ fun AdminAddProductDialog(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
-                        value = unitLabel,
-                        onValueChange = { unitLabel = it },
-                        label = { Text("Pack Size") },
+                        value = badgeText,
+                        onValueChange = { badgeText = it },
+                        label = { Text("Badge Tag") },
+                        placeholder = { Text("NEW / HOT") },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -345,24 +420,105 @@ fun AdminAddProductDialog(
                         modifier = Modifier.weight(0.7f)
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = priceText,
-                        onValueChange = { priceText = it.filter { c -> c.isDigit() } },
-                        label = { Text("Selling ₹") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
+
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Pack Variants & Prices",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
-                    OutlinedTextField(
-                        value = mrpText,
-                        onValueChange = { mrpText = it.filter { c -> c.isDigit() } },
-                        label = { Text("MRP ₹") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
+                    TextButton(
+                        onClick = {
+                            val nextIdx = variantStates.size + 1
+                            variantStates.add(
+                                ProductVariant(
+                                    id = "new_v_$nextIdx",
+                                    label = "Pack $nextIdx",
+                                    price = variantStates.lastOrNull()?.price ?: 99,
+                                    mrp = variantStates.lastOrNull()?.mrp ?: 119
+                                )
+                            )
+                        }
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add Pack")
+                    }
                 }
+
+                variantStates.forEachIndexed { idx, v ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Pack ${idx + 1}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                if (variantStates.size > 1) {
+                                    IconButton(
+                                        onClick = { variantStates.removeAt(idx) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Close,
+                                            contentDescription = "Remove pack",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = v.label,
+                                onValueChange = { variantStates[idx] = v.copy(label = it) },
+                                label = { Text("Pack Size (e.g. 500 g)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = if (v.price == 0) "" else v.price.toString(),
+                                    onValueChange = { raw ->
+                                        val digits = raw.filter { it.isDigit() }
+                                        variantStates[idx] = v.copy(price = digits.toIntOrNull() ?: 0)
+                                    },
+                                    label = { Text("Selling ₹") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = if (v.mrp == 0) "" else v.mrp.toString(),
+                                    onValueChange = { raw ->
+                                        val digits = raw.filter { it.isDigit() }
+                                        variantStates[idx] = v.copy(mrp = digits.toIntOrNull() ?: 0)
+                                    },
+                                    label = { Text("MRP ₹") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider()
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -379,21 +535,32 @@ fun AdminAddProductDialog(
                     Text("Show in Home Bestsellers", style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = isBestseller, onCheckedChange = { isBestseller = it })
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Show in Cart 'Missed Something?'", style = MaterialTheme.typography.bodyMedium)
+                    Switch(checked = isMissedQuickAdd, onCheckedChange = { isMissedQuickAdd = it })
+                }
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    val p = priceText.toIntOrNull() ?: 79
-                    val m = mrpText.toIntOrNull() ?: p
-                    val eta = etaText.toIntOrNull() ?: 10
-                    val sub = selectedCategory.subcategories.getOrElse(1) { "All" }
-                    onConfirm(brand, name, selectedCategory.id, sub, unitLabel, p, m, isVeg, eta, isBestseller)
-                },
-                enabled = name.trim().isNotEmpty(),
-                modifier = Modifier.testTag("confirm_add_product_button")
-            ) {
-                Text("Add SKU")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(
+                    onClick = { submitProduct(keepOpen = true) },
+                    enabled = name.trim().isNotEmpty(),
+                    modifier = Modifier.testTag("save_and_add_another_product_button")
+                ) {
+                    Text("+ Another")
+                }
+                Button(
+                    onClick = { submitProduct(keepOpen = false) },
+                    enabled = name.trim().isNotEmpty(),
+                    modifier = Modifier.testTag("confirm_add_product_button")
+                ) {
+                    Text("Add SKU")
+                }
             }
         },
         dismissButton = {
@@ -1415,3 +1582,214 @@ fun AdminPromoBannerDialog(
         }
     )
 }
+
+@Composable
+fun AdminRiderOtpDialog(
+    order: ActiveOrder,
+    onDismiss: () -> Unit,
+    onVerifyOtp: (enteredOtp: String) -> Boolean
+) {
+    var otpInput by remember { mutableStateOf("") }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.Pin,
+                contentDescription = null,
+                tint = VegGreen
+            )
+        },
+        title = { Text("Rider Delivery OTP Handover") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Order ${order.orderId} • Rider: ${order.riderName}",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Ask the customer for the 4-digit Delivery OTP displayed under their order in the QuickDrop app, then enter it below to finish the ride.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = otpInput,
+                    onValueChange = { raw ->
+                        otpInput = raw.filter { it.isDigit() }.take(4)
+                        errorMsg = null
+                    },
+                    label = { Text("Enter 4-Digit Customer OTP") },
+                    placeholder = { Text("e.g. 4829") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = errorMsg != null,
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_rider_otp_input")
+                )
+                if (errorMsg != null) {
+                    Text(
+                        text = errorMsg!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val ok = onVerifyOtp(otpInput)
+                    if (ok) {
+                        onDismiss()
+                    } else {
+                        errorMsg = "Incorrect OTP! Ask customer for the 4-digit OTP shown under their order."
+                    }
+                },
+                enabled = otpInput.length == 4,
+                colors = ButtonDefaults.buttonColors(containerColor = VegGreen),
+                modifier = Modifier.testTag("admin_confirm_otp_end_ride_btn")
+            ) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Verify & End Ride")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun AdminShopPickupOtpDialog(
+    order: ActiveOrder,
+    onDismiss: () -> Unit,
+    onVerifyPickupOtp: (enteredOtp: String) -> Boolean
+) {
+    var otpInput by remember { mutableStateOf("") }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.Storefront,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = { Text("Shop Pickup OTP Verification") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Order ${order.orderId} • ${order.hubOrKitchen}",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Rider ${order.riderName} must ask the Shopkeeper (Dukaandar) for their 4-digit Pickup OTP shown in their Partner Portal before leaving with the order.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = otpInput,
+                    onValueChange = { raw ->
+                        otpInput = raw.filter { it.isDigit() }.take(4)
+                        errorMsg = null
+                    },
+                    label = { Text("Enter 4-Digit Shop Pickup OTP") },
+                    placeholder = { Text("e.g. 6194") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = errorMsg != null,
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_shop_pickup_otp_input")
+                )
+                if (errorMsg != null) {
+                    Text(
+                        text = errorMsg!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val ok = onVerifyPickupOtp(otpInput)
+                    if (ok) {
+                        onDismiss()
+                    } else {
+                        errorMsg = "Incorrect Shop Pickup OTP! Ask the Shopkeeper for the 4-digit Pickup OTP."
+                    }
+                },
+                enabled = otpInput.length == 4,
+                modifier = Modifier.testTag("admin_confirm_shop_pickup_otp_btn")
+            ) {
+                Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Verify & Start Ride")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun AdminRejectShopDialog(
+    application: ShopkeeperApplication,
+    onDismiss: () -> Unit,
+    onReject: (reason: String) -> Unit
+) {
+    var reason by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.GppBad,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = { Text("Reject ${application.shopName}?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Add a clear reason so the shopkeeper knows what to fix before re-applying:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = reason,
+                    onValueChange = { reason = it },
+                    label = { Text("Reason / Note") },
+                    placeholder = { Text("e.g. Please attach valid GST / FSSAI number") },
+                    maxLines = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onReject(reason) },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.testTag("admin_confirm_reject_shop_btn")
+            ) {
+                Text("Reject Shop")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+

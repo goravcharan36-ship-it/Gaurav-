@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.model.*
+import com.example.ui.components.AddExtraItemsBottomSheet
 import com.example.ui.components.VegNonVegBadge
 import com.example.ui.theme.*
 import com.example.viewmodel.QuickDropUiState
@@ -65,7 +66,14 @@ fun AdminScreen(
     onAdvanceOrderStage: (String) -> Unit,
     onAssignRider: (String, String) -> Unit,
     onUpdateOrderDetails: (String, Int, Int, String) -> Unit,
+    onVerifyShopPickupOtp: (orderId: String, enteredOtp: String) -> Boolean,
+    onVerifyOrderOtp: (orderId: String, enteredOtp: String) -> Boolean,
     onDeleteOrder: (String) -> Unit,
+    onApproveShop: (appId: String) -> Unit,
+    onRejectShop: (appId: String, reason: String) -> Unit,
+    onAddExtraProductToOrder: (orderId: String, product: GroceryProduct) -> Unit,
+    onAddExtraDishToOrder: (orderId: String, dish: MenuItem) -> Unit,
+    onAddCustomExtraToOrder: (orderId: String, name: String, price: Int) -> Unit,
     onOpenOrderTracking: (String) -> Unit,
     onToggleProductStock: (String) -> Unit,
     onUpdateProductFull: (
@@ -83,7 +91,7 @@ fun AdminScreen(
         variants: List<ProductVariant>
     ) -> Unit,
     onDeleteProduct: (String) -> Unit,
-    onAddProduct: (String, String, String, String, String, Int, Int, Boolean, Int, Boolean) -> Unit,
+    onAddProduct: (String, String, String, String, String, Int, Int, Boolean, Int, Boolean, String?, Boolean, List<ProductVariant>) -> Unit,
     onAddCategory: (String, Boolean) -> Unit,
     onUpdateCategory: (String, String, Boolean) -> Unit,
     onDeleteCategory: (String) -> Unit,
@@ -118,6 +126,10 @@ fun AdminScreen(
     var showChangePasswordDialog by remember { mutableStateOf(false) }
     var showFeeConfigDialog by remember { mutableStateOf(false) }
     var editingOrder by remember { mutableStateOf<ActiveOrder?>(null) }
+    var addingExtraToOrder by remember { mutableStateOf<ActiveOrder?>(null) }
+    var shopPickupVerifyingOrder by remember { mutableStateOf<ActiveOrder?>(null) }
+    var otpVerifyingOrder by remember { mutableStateOf<ActiveOrder?>(null) }
+    var rejectingShopApp by remember { mutableStateOf<ShopkeeperApplication?>(null) }
     var showAddProductDialog by remember { mutableStateOf(false) }
     var editingProduct by remember { mutableStateOf<GroceryProduct?>(null) }
     var showCategoryDialog by remember { mutableStateOf(false) }
@@ -232,13 +244,18 @@ fun AdminScreen(
                     ) {
                         AdminTab.entries.forEach { tab ->
                             val selected = uiState.adminTab == tab
+                            val tabTitle = if (tab == AdminTab.SELLERS && uiState.pendingShopApplicationsCount > 0) {
+                                "${tab.label} (${uiState.pendingShopApplicationsCount})"
+                            } else {
+                                tab.label
+                            }
                             Tab(
                                 selected = selected,
                                 onClick = { onSelectTab(tab) },
                                 modifier = Modifier.testTag("admin_tab_${tab.name.lowercase()}"),
                                 text = {
                                     Text(
-                                        text = tab.label,
+                                        text = tabTitle,
                                         style = MaterialTheme.typography.labelMedium.copy(
                                             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium
                                         ),
@@ -302,8 +319,17 @@ fun AdminScreen(
                     onAdvanceStage = onAdvanceOrderStage,
                     onAssignRider = onAssignRider,
                     onEditOrder = { editingOrder = it },
+                    onVerifyShopPickupOtpOrder = { shopPickupVerifyingOrder = it },
+                    onVerifyOtpOrder = { otpVerifyingOrder = it },
+                    onAddExtraToOrder = { addingExtraToOrder = it },
                     onDeleteOrder = { pendingDelete = DeleteTarget.Order(it) },
                     onOpenTracking = onOpenOrderTracking
+                )
+
+                AdminTab.SELLERS -> AdminShopApprovalsTab(
+                    applications = uiState.shopApplications,
+                    onApprove = onApproveShop,
+                    onRequestReject = { rejectingShopApp = it }
                 )
 
                 AdminTab.INVENTORY -> AdminInventoryTab(
@@ -381,13 +407,63 @@ fun AdminScreen(
         )
     }
 
+    shopPickupVerifyingOrder?.let { targetOrder ->
+        val liveOrder = uiState.orders.firstOrNull { it.orderId == targetOrder.orderId } ?: targetOrder
+        AdminShopPickupOtpDialog(
+            order = liveOrder,
+            onDismiss = { shopPickupVerifyingOrder = null },
+            onVerifyPickupOtp = { enteredOtp ->
+                onVerifyShopPickupOtp(liveOrder.orderId, enteredOtp)
+            }
+        )
+    }
+
+    otpVerifyingOrder?.let { targetOrder ->
+        val liveOrder = uiState.orders.firstOrNull { it.orderId == targetOrder.orderId } ?: targetOrder
+        AdminRiderOtpDialog(
+            order = liveOrder,
+            onDismiss = { otpVerifyingOrder = null },
+            onVerifyOtp = { enteredOtp ->
+                onVerifyOrderOtp(liveOrder.orderId, enteredOtp)
+            }
+        )
+    }
+
+    rejectingShopApp?.let { targetApp ->
+        AdminRejectShopDialog(
+            application = targetApp,
+            onDismiss = { rejectingShopApp = null },
+            onReject = { reason ->
+                onRejectShop(targetApp.id, reason)
+                rejectingShopApp = null
+            }
+        )
+    }
+
+    addingExtraToOrder?.let { targetOrder ->
+        val liveOrder = uiState.orders.firstOrNull { it.orderId == targetOrder.orderId } ?: targetOrder
+        AddExtraItemsBottomSheet(
+            title = "Admin: Add Extra to ${liveOrder.orderId}",
+            subtitle = "Add groceries, dishes, or custom items to this order",
+            products = uiState.products,
+            restaurants = uiState.restaurants,
+            allowCustomItem = true,
+            onAddProduct = { prod -> onAddExtraProductToOrder(liveOrder.orderId, prod) },
+            onAddDish = { dish -> onAddExtraDishToOrder(liveOrder.orderId, dish) },
+            onAddCustomExtra = { name, price -> onAddCustomExtraToOrder(liveOrder.orderId, name, price) },
+            onDismiss = { addingExtraToOrder = null }
+        )
+    }
+
     if (showAddProductDialog && uiState.categories.isNotEmpty()) {
         AdminAddProductDialog(
             categories = uiState.categories,
             onDismiss = { showAddProductDialog = false },
-            onConfirm = { brand, name, catId, sub, unit, price, mrp, veg, eta, bestseller ->
-                onAddProduct(brand, name, catId, sub, unit, price, mrp, veg, eta, bestseller)
-                showAddProductDialog = false
+            onConfirm = { brand, name, catId, sub, unit, price, mrp, veg, eta, bestseller, badge, missedQuick, variants, keepOpen ->
+                onAddProduct(brand, name, catId, sub, unit, price, mrp, veg, eta, bestseller, badge, missedQuick, variants)
+                if (!keepOpen) {
+                    showAddProductDialog = false
+                }
             }
         )
     }
@@ -765,6 +841,18 @@ private fun AdminOverviewTab(
                             .clickable { onJumpToTab(AdminTab.PARTNERS) }
                     )
                 }
+                if (uiState.shopApplications.isNotEmpty()) {
+                    AdminKpiCard(
+                        title = "Shopkeeper Applications",
+                        value = "${uiState.pendingShopApplicationsCount} Pending",
+                        subtitle = "${uiState.shopApplications.count { it.status == ShopApplicationStatus.APPROVED }} approved • Tap to review",
+                        icon = Icons.Filled.Storefront,
+                        accent = if (uiState.pendingShopApplicationsCount > 0) Color(0xFFB26A00) else VegGreen,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onJumpToTab(AdminTab.SELLERS) }
+                    )
+                }
             }
         }
 
@@ -968,6 +1056,9 @@ private fun AdminOrdersTab(
     onAdvanceStage: (String) -> Unit,
     onAssignRider: (String, String) -> Unit,
     onEditOrder: (ActiveOrder) -> Unit,
+    onVerifyShopPickupOtpOrder: (ActiveOrder) -> Unit,
+    onVerifyOtpOrder: (ActiveOrder) -> Unit,
+    onAddExtraToOrder: (ActiveOrder) -> Unit,
     onDeleteOrder: (ActiveOrder) -> Unit,
     onOpenTracking: (String) -> Unit
 ) {
@@ -1037,16 +1128,24 @@ private fun AdminOrdersTab(
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
-                                color = if (order.stageIndex >= 3) MaterialTheme.colorScheme.surfaceContainerHigh
+                                color = if (order.stageIndex >= 3) VegGreen.copy(alpha = 0.14f)
                                 else MaterialTheme.colorScheme.primaryContainer,
                                 shape = CircleShape
                             ) {
                                 Text(
-                                    text = stageLabel,
+                                    text = if (order.stageIndex >= 3) "$stageLabel ✓" else stageLabel,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (order.stageIndex >= 3) MaterialTheme.colorScheme.onSurface else Color.White,
+                                    color = if (order.stageIndex >= 3) VegGreen else Color.White,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
+                            }
+                            if (order.stageIndex < 3) {
+                                IconButton(
+                                    onClick = { onVerifyOtpOrder(order) },
+                                    modifier = Modifier.testTag("admin_otp_icon_${order.orderId}")
+                                ) {
+                                    Icon(Icons.Filled.Pin, contentDescription = "Verify Delivery OTP", tint = VegGreen)
+                                }
                             }
                             IconButton(onClick = { onEditOrder(order) }) {
                                 Icon(Icons.Filled.Edit, contentDescription = "Edit Order", tint = MaterialTheme.colorScheme.primary)
@@ -1112,25 +1211,61 @@ private fun AdminOrdersTab(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        if (order.stageIndex < 3) {
+                        if (order.stageIndex < 2) {
                             Button(
+                                onClick = { onVerifyShopPickupOtpOrder(order) },
+                                modifier = Modifier
+                                    .weight(1.35f)
+                                    .testTag("admin_shop_pickup_otp_${order.orderId}"),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text("Shop OTP", maxLines = 1)
+                            }
+                            OutlinedButton(
                                 onClick = { onAdvanceStage(order.orderId) },
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("admin_advance_${order.orderId}"),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                             ) {
-                                Text("Advance Status")
+                                Text("Advance", maxLines = 1)
+                            }
+                        } else if (order.stageIndex == 2) {
+                            Button(
+                                onClick = { onVerifyOtpOrder(order) },
+                                colors = ButtonDefaults.buttonColors(containerColor = VegGreen),
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .testTag("admin_otp_complete_${order.orderId}"),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text("End Ride (OTP)", maxLines = 1)
+                            }
+                        }
+                        if (order.stageIndex < 3) {
+                            FilledTonalButton(
+                                onClick = { onAddExtraToOrder(order) },
+                                modifier = Modifier
+                                    .weight(0.95f)
+                                    .testTag("admin_add_extra_${order.orderId}"),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text("+ Extra", maxLines = 1)
                             }
                         }
                         OutlinedButton(
                             onClick = { onOpenTracking(order.orderId) },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp)
+                            modifier = Modifier.weight(0.9f),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         ) {
-                            Text("Customer View")
+                            Text("Track", maxLines = 1)
                         }
                     }
                 }
@@ -1711,3 +1846,226 @@ private fun AdminPartnersTab(
         }
     }
 }
+
+@Composable
+private fun AdminShopApprovalsTab(
+    applications: List<ShopkeeperApplication>,
+    onApprove: (appId: String) -> Unit,
+    onRequestReject: (ShopkeeperApplication) -> Unit
+) {
+    var statusFilter by remember { mutableStateOf("All") }
+    val filtered = remember(applications, statusFilter) {
+        when (statusFilter) {
+            "Pending" -> applications.filter { it.status == ShopApplicationStatus.PENDING_REVIEW }
+            "Approved" -> applications.filter { it.status == ShopApplicationStatus.APPROVED }
+            "Rejected" -> applications.filter { it.status == ShopApplicationStatus.REJECTED }
+            else -> applications
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf("All", "Pending", "Approved", "Rejected")) { tab ->
+                    FilterChip(
+                        selected = statusFilter == tab,
+                        onClick = { statusFilter = tab },
+                        label = { Text(tab) }
+                    )
+                }
+            }
+        }
+
+        if (filtered.isEmpty()) {
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 1.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.Storefront, contentDescription = null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+                        Text("No shop applications in this filter", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+        }
+
+        items(filtered, key = { it.id }) { app ->
+            val (badgeBg, badgeText) = when (app.status) {
+                ShopApplicationStatus.PENDING_REVIEW -> Color(0xFFFFF4E0) to Color(0xFFB26A00)
+                ShopApplicationStatus.APPROVED -> VegGreen.copy(alpha = 0.14f) to VegGreen
+                ShopApplicationStatus.REJECTED -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.error
+            }
+
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                shape = RoundedCornerShape(18.dp),
+                shadowElevation = 2.dp,
+                modifier = Modifier.testTag("admin_shop_card_${app.id}")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = app.shopName,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold)
+                            )
+                            Text(
+                                text = "${app.shopType.label} • ${app.area}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Surface(color = badgeBg, shape = CircleShape) {
+                            Text(
+                                text = app.status.label,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = badgeText,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Owner: ${app.ownerName} • Ph: ${app.phone} • ETA ${app.etaMins}m",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = "Address: ${app.fullAddress}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (app.gstOrLicenseNote.isNotBlank()) {
+                        Text(
+                            text = "Docs: ${app.gstOrLicenseNote}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // Submitted Listings Preview for Admin Inspection
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Submitted Listings (${app.listings.size})",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                            if (app.listings.isEmpty()) {
+                                Text(
+                                    text = "No initial items added yet (shopkeeper can add after approval).",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                app.listings.forEach { item ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            VegNonVegBadge(isVeg = item.isVeg)
+                                            Text(
+                                                text = "${item.title} (${item.unitOrPortion})",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Text(
+                                            text = "₹${item.price}",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (!app.adminReviewNote.isNullOrBlank()) {
+                        Text(
+                            text = "Review Note: ${app.adminReviewNote}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = badgeText
+                        )
+                    }
+
+                    if (app.status != ShopApplicationStatus.APPROVED) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = { onApprove(app.id) },
+                                colors = ButtonDefaults.buttonColors(containerColor = VegGreen),
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .testTag("admin_approve_shop_${app.id}"),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Filled.Verified, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Approve & Activate")
+                            }
+                            if (app.status != ShopApplicationStatus.REJECTED) {
+                                OutlinedButton(
+                                    onClick = { onRequestReject(app) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("admin_reject_shop_${app.id}"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Reject")
+                                }
+                            }
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = { onRequestReject(app) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.PauseCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Pause / Revoke Shop Approval")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
