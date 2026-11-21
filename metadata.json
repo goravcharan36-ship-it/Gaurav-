@@ -1,0 +1,6 @@
+{
+  "name": "QuickDrop",
+  "description": "QuickDrop — 10-minute Blinkit-style grocery delivery and Zomato-style food & restaurant ordering app.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

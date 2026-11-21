@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">QuickDrop</string>
+    <string name="cd_brand_logo">QuickDrop brand logo</string>
+    <string name="cd_profile_avatar">User profile</string>
+    <string name="cd_search_icon">Search groceries and restaurants</string>
+    <string name="cd_voice_search">Voice search</string>
+    <string name="cd_navigate_back">Navigate back</string>
+    <string name="cd_increment_qty">Increase quantity</string>
+    <string name="cd_decrement_qty">Decrease quantity</string>
+    <string name="cd_location_dropdown">Select delivery location</string>
+</resources>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Bag handle -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M43,40 C43,31 48,26 54,26 C60,26 65,31 65,40"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+    <!-- Shopping bag body centered inside 66dp safe zone -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,40 L74,40 C77,40 79,42 79,45 L79,72 C79,77 75,80 70,80 L38,80 C33,80 29,77 29,72 L29,45 C29,42 31,40 34,40 Z" />
+    <!-- Golden lightning bolt inside bag -->
+    <path
+        android:fillColor="#F9BD00"
+        android:pathData="M56.5,45 L44.5,61.5 L53,61.5 L50.5,75 L63.5,58 L55,58 Z" />
+</vector>

@@ -1,0 +1,65 @@
+package com.example.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// QuickDrop Light Palette (Emerald Blinkit Green + Golden Bolt + Crisp Blue-White Surfaces)
+val QuickDropPrimary = Color(0xFF006714)
+val QuickDropOnPrimary = Color(0xFFFFFFFF)
+val QuickDropPrimaryContainer = Color(0xFF0C831F)
+val QuickDropOnPrimaryContainer = Color(0xFFE0FFD7)
+
+val QuickDropSecondary = Color(0xFF785A00)
+val QuickDropOnSecondary = Color(0xFFFFFFFF)
+val QuickDropSecondaryContainer = Color(0xFFF9BD00)
+val QuickDropOnSecondaryContainer = Color(0xFF694E00)
+val QuickDropOnSecondaryFixed = Color(0xFF251A00)
+val QuickDropSecondaryFixed = Color(0xFFFFDF9C)
+
+val QuickDropTertiary = Color(0xFF4E5B54)
+val QuickDropOnTertiary = Color(0xFFFFFFFF)
+val QuickDropTertiaryContainer = Color(0xFF66746C)
+val QuickDropOnTertiaryContainer = Color(0xFFEBFAF0)
+val QuickDropTertiaryFixed = Color(0xFFD7E6DC)
+
+val QuickDropSurface = Color(0xFFF9F9FF)
+val QuickDropSurfaceContainerLowest = Color(0xFFFFFFFF)
+val QuickDropSurfaceContainerLow = Color(0xFFF0F3FF)
+val QuickDropSurfaceContainer = Color(0xFFE7EEFF)
+val QuickDropSurfaceContainerHigh = Color(0xFFDEE8FF)
+val QuickDropSurfaceContainerHighest = Color(0xFFD8E3FB)
+val QuickDropOnSurface = Color(0xFF111C2D)
+val QuickDropOnSurfaceVariant = Color(0xFF3F4A3C)
+val QuickDropOutline = Color(0xFF6F7A6A)
+val QuickDropOutlineVariant = Color(0xFFBECAB7)
+
+val QuickDropError = Color(0xFFBA1A1A)
+val QuickDropOnError = Color(0xFFFFFFFF)
+val QuickDropErrorContainer = Color(0xFFFFDAD6)
+val QuickDropOnErrorContainer = Color(0xFF93000A)
+
+// Zomato-style Food & Dining Accent Tokens
+val ZomatoCrimson = Color(0xFFE23744)
+val ZomatoCrimsonDark = Color(0xFFFF6B74)
+val ZomatoCrimsonContainer = Color(0xFFFFECEE)
+val ZomatoCrimsonContainerDark = Color(0xFF4B161B)
+val VegGreen = Color(0xFF0F8A3B)
+val NonVegRed = Color(0xFFC93B2B)
+
+// QuickDrop Dark Palette
+val QuickDropDarkPrimary = Color(0xFF74DD6E)
+val QuickDropDarkOnPrimary = Color(0xFF003907)
+val QuickDropDarkPrimaryContainer = Color(0xFF0C831F)
+val QuickDropDarkOnPrimaryContainer = Color(0xFFE0FFD7)
+val QuickDropDarkSecondary = Color(0xFFF9BD00)
+val QuickDropDarkOnSecondary = Color(0xFF3F2E00)
+val QuickDropDarkSecondaryContainer = Color(0xFF5B4300)
+val QuickDropDarkOnSecondaryContainer = Color(0xFFFFDF9C)
+val QuickDropDarkSurface = Color(0xFF0E141E)
+val QuickDropDarkSurfaceContainerLowest = Color(0xFF090E16)
+val QuickDropDarkSurfaceContainerLow = Color(0xFF151D2B)
+val QuickDropDarkSurfaceContainer = Color(0xFF1B2434)
+val QuickDropDarkSurfaceContainerHigh = Color(0xFF232E41)
+val QuickDropDarkSurfaceContainerHighest = Color(0xFF2D3950)
+val QuickDropDarkOnSurface = Color(0xFFEAF0FA)
+val QuickDropDarkOnSurfaceVariant = Color(0xFFB4C0B2)
+val QuickDropDarkOutlineVariant = Color(0xFF3C473C)
