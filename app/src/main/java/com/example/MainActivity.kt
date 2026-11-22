@@ -29,7 +29,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
@@ -128,19 +127,7 @@ class MainActivity : ComponentActivity() {
                         showEnableGpsDialog = false
                         startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                     },
-                    onDismissEnableGpsDialog = { showEnableGpsDialog = false },
-                    onRequestStartupLocation = {
-                        if (hasLocationPermission()) {
-                            fetchLiveLocationOrPromptGps()
-                        } else {
-                            startupLocationLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                )
-                            )
-                        }
-                    }
+                    onDismissEnableGpsDialog = { showEnableGpsDialog = false }
                 )
             }
         }
@@ -163,8 +150,7 @@ fun QuickDropApp(
     viewModel: QuickDropViewModel,
     showEnableGpsDialog: Boolean = false,
     onOpenDeviceLocationSettings: () -> Unit = {},
-    onDismissEnableGpsDialog: () -> Unit = {},
-    onRequestStartupLocation: () -> Unit = {}
+    onDismissEnableGpsDialog: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }

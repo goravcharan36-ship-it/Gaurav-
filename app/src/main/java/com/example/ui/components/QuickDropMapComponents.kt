@@ -16,6 +16,7 @@ import android.os.CancellationSignal
 import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.net.toUri
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -412,7 +413,7 @@ fun LiveDeliveryRouteMap(
                         .clip(CircleShape)
                         .clickable {
                             val query = Uri.encode(order.deliveryAddress)
-                            val uri = Uri.parse("geo:12.9716,77.5946?q=$query")
+                            val uri = "geo:12.9716,77.5946?q=$query".toUri()
                             val intent = Intent(Intent.ACTION_VIEW, uri)
                             runCatching { context.startActivity(intent) }
                         }

@@ -33,6 +33,7 @@ import com.example.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.viewmodel.QuickDropUiState
+import java.util.Locale
 
 @Composable
 fun HomeScreen(
@@ -928,7 +929,7 @@ private fun StealOfTheDayCard(
     val h = secondsLeft / 3600
     val m = (secondsLeft % 3600) / 60
     val s = secondsLeft % 60
-    val timerText = String.format("%02d:%02d:%02d", h, m, s)
+    val timerText = String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
 
     Surface(
         modifier = modifier.fillMaxWidth(),
